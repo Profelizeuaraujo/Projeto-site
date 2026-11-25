@@ -111,6 +111,14 @@ export function PublicSite({
   onOpenDashboard: () => void;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
+  const [navIndicator, setNavIndicator] = useState({
+    left: 0,
+    width: 0,
+    visible: false,
+  });
+  const navContainerRef = useRef<HTMLElement | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<ProjectCategory>('Todos');
   const [activeService, setActiveService] = useState<ServiceItem | null>(null);
   const [activeProject, setActiveProject] = useState<ProjectItem | null>(null);
@@ -137,6 +145,17 @@ export function PublicSite({
       trackedPageViewRef.current = true;
       trackPublicEvent('page_view', 'home', 'Acesso');
     }
+  }, []);
+
+  // Switch header to translucent frosted glass when scrolling down
+  useEffect(() => {
+    const onScroll = () => {
+      const next = window.scrollY > 24;
+      setIsScrolled((prev) => (prev === next ? prev : next));
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   // Close modals on Escape key
@@ -265,9 +284,30 @@ export function PublicSite({
     return items;
   }, [config.showSections, onOpenDashboard]);
 
+  const handleNavEnter = useCallback(
+    (id: string, el: HTMLButtonElement) => {
+      setHoveredNavId(id);
+      const navEl = navContainerRef.current;
+      if (!navEl) return;
+      const navRect = navEl.getBoundingClientRect();
+      const btnRect = el.getBoundingClientRect();
+      setNavIndicator({
+        left: btnRect.left - navRect.left,
+        width: btnRect.width,
+        visible: true,
+      });
+    },
+    [],
+  );
+
+  const handleNavLeave = useCallback(() => {
+    setHoveredNavId(null);
+    setNavIndicator((prev) => ({ ...prev, visible: false }));
+  }, []);
+
   return (
     <div
-      className="relative min-h-screen overflow-x-hidden bg-[#050B14] text-slate-100"
+      className="relative min-h-screen overflow-x-clip bg-[#050B14] text-slate-100"
       style={{ '--site-accent': accent } as React.CSSProperties}
     >
       {config.enableParticles && <ParticleNetworkBackground accentColor={accent} />}
@@ -280,34 +320,82 @@ export function PublicSite({
       />
 
       {/* TOP BAR CONTRACT: 3 clean zones separated by gap-8 */}
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#050B14]/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-8 px-4 py-4 sm:px-6 lg:px-8">
-          {/* Zone 1: Single text element wordmark */}
+      <header
+        className={`sticky top-0 z-50 border-b transition-all duration-300 ${
+          isScrolled
+            ? 'border-white/15 bg-[#050B14]/40 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.28)]'
+            : 'border-transparent bg-transparent'
+        }`}
+      >
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-8 px-4 py-3.5 sm:px-6 lg:px-8">
+          {/* Zone 1: Brand wordmark + tagline */}
           <button
             type="button"
             onClick={() => scrollToSection('inicio')}
-            className="font-display text-base font-bold tracking-tight text-slate-100 whitespace-nowrap shrink-0 sm:text-lg focus-visible:outline-2 focus-visible:outline-offset-4"
+            className="group flex cursor-pointer flex-col items-start text-left whitespace-nowrap shrink-0 transition-transform duration-200 hover:-translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-4"
           >
-            {config.brandName}
+            <span className="font-display text-base font-bold leading-tight tracking-tight text-slate-100 transition-colors duration-200 group-hover:text-white sm:text-lg">
+              {config.brandName}
+            </span>
+            <span
+              className="mt-0.5 text-[10px] font-semibold uppercase leading-tight tracking-[0.22em] opacity-90 transition-opacity duration-200 group-hover:opacity-100 sm:text-[11px]"
+              style={{ color: accent }}
+            >
+              {config.brandTagline || 'SOLUÇÕES DIGITAIS'}
+            </span>
           </button>
 
-          {/* Zone 2: Concise single-line navigation links */}
+          {/* Zone 2: Concise single-line navigation links with smooth sliding hover spotlight */}
           <nav
-            className="hidden items-center gap-7 md:flex"
+            ref={navContainerRef}
+            onMouseLeave={handleNavLeave}
+            className="relative hidden items-center gap-1 rounded-xl p-1 md:flex"
             aria-label="Navegação principal"
           >
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() =>
-                  item.action ? item.action() : scrollToSection(item.id)
-                }
-                className="text-sm font-medium text-slate-300 whitespace-nowrap shrink-0 transition-colors hover:text-white underline-offset-4 hover:underline"
-              >
-                {item.label}
-              </button>
-            ))}
+            {/* Sliding hover pill + bottom accent glow */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-lg transition-all duration-200 ease-out"
+              style={{
+                transform: `translate3d(${navIndicator.left}px, 0, 0)`,
+                width: `${navIndicator.width}px`,
+                opacity: navIndicator.visible ? 1 : 0,
+                backgroundColor: `${accent}24`,
+                border: `1px solid ${accent}66`,
+                boxShadow: `0 6px 20px -6px ${accent}75`,
+              }}
+            >
+              <span
+                className="absolute inset-x-3 bottom-0.5 h-[2px] rounded-full"
+                style={{
+                  backgroundColor: accent,
+                  boxShadow: `0 0 10px ${accent}`,
+                }}
+              />
+            </span>
+
+            {navItems.map((item) => {
+              const isHovered = hoveredNavId === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onMouseEnter={(e) => handleNavEnter(item.id, e.currentTarget)}
+                  onFocus={(e) => handleNavEnter(item.id, e.currentTarget)}
+                  onBlur={handleNavLeave}
+                  onClick={() =>
+                    item.action ? item.action() : scrollToSection(item.id)
+                  }
+                  className="relative z-10 cursor-pointer rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-all duration-200 focus-visible:outline-none"
+                  style={{
+                    color: isHovered ? '#FFFFFF' : '#CBD5E1',
+                    transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
+                  }}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
           </nav>
 
           {/* Zone 3: Single primary CTA + Mobile toggle */}
@@ -315,18 +403,18 @@ export function PublicSite({
             <button
               type="button"
               onClick={() => scrollToSection('contato')}
-              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-[#050B14] whitespace-nowrap shrink-0 transition-opacity hover:opacity-90"
+              className="group inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-[#050B14] whitespace-nowrap shrink-0 transition-all duration-200 hover:-translate-y-[1px] hover:brightness-110"
               style={{ backgroundColor: accent }}
             >
               <span>Contato</span>
-              <ArrowRight className="h-4 w-4" />
+              <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
             </button>
 
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Abrir menu de navegação"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-[#0B1526] text-slate-100 md:hidden"
+              className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-[#0B1526] text-slate-100 transition-colors hover:border-white/25 hover:text-white md:hidden"
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -346,7 +434,7 @@ export function PublicSite({
                     if (item.action) item.action();
                     else scrollToSection(item.id);
                   }}
-                  className="rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-200 hover:bg-white/5"
+                  className="rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-200 transition-all duration-200 hover:translate-x-1 hover:bg-white/[0.06] hover:text-white"
                 >
                   {item.label}
                 </button>
@@ -433,49 +521,37 @@ export function PublicSite({
                 <div className="grid items-start gap-12 lg:grid-cols-12">
                   {/* Photo & Indicators */}
                   <div className="lg:col-span-5">
-                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0B1526] p-5">
-                      <div className="relative flex aspect-[4/3] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[#050B14] text-center">
-                        {config.photoUrl ? (
-                          <img
-                            src={config.photoUrl}
-                            alt={`Fotografia profissional de ${config.brandName}`}
-                            loading="lazy"
-                            decoding="async"
-                            referrerPolicy="no-referrer"
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center p-6">
-                            <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-white/10 bg-[#0B1526]">
-                              <User className="h-8 w-8" style={{ color: accent }} />
-                            </div>
-                            <p className="font-display mt-4 text-base font-semibold text-slate-100">
-                              {config.brandName}
-                            </p>
-                            <p className="mt-1 max-w-xs text-xs text-slate-400">
-                              Foto profissional configurável diretamente no Painel de Controle.
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                    <div className="rounded-2xl border border-white/10 bg-[#0B1526] p-5">
+                      <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+                        <div className="relative flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-[#050B14] sm:h-32 sm:w-32">
+                          {config.photoUrl ? (
+                            <img
+                              src={config.photoUrl}
+                              alt={`Fotografia profissional de ${config.brandName}`}
+                              loading="lazy"
+                              decoding="async"
+                              referrerPolicy="no-referrer"
+                              className="h-full w-full object-cover object-top"
+                            />
+                          ) : (
+                            <User className="h-10 w-10" style={{ color: accent }} />
+                          )}
+                        </div>
 
-                      <div className="mt-4 flex items-center justify-between gap-3">
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <p
-                            className="text-xs font-semibold"
+                            className="text-xs font-semibold uppercase tracking-wider"
                             style={{ color: accent }}
                           >
                             Consultor de Tecnologia
                           </p>
-                          <p className="text-xs text-slate-400">{config.location}</p>
+                          <p className="font-display mt-1 text-lg font-bold text-slate-100">
+                            {config.brandName}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {config.location}
+                          </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={onOpenDashboard}
-                          className="text-xs font-medium text-slate-300 underline-offset-4 hover:text-white hover:underline whitespace-nowrap"
-                        >
-                          Gerenciar perfil
-                        </button>
                       </div>
                     </div>
 
@@ -533,38 +609,54 @@ export function PublicSite({
                         engenharia de software e pela inteligência artificial.
                       </p>
                     </div>
+                  </div>
+                </div>
 
-                    {/* Clean Trajectory List (no thick left border cliché) */}
-                    <div className="mt-10 border-t border-white/10 pt-8">
-                      <h3 className="font-display text-sm font-semibold text-slate-100">
+                {/* Full-width symmetrical 3-column Trajectory for crisp alignment on laptops & desktops */}
+                <div className="mt-14 border-t border-white/10 pt-10">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p
+                        className="text-xs font-semibold uppercase tracking-wider"
+                        style={{ color: accent }}
+                      >
+                        Evolução Contínua
+                      </p>
+                      <h3 className="font-display mt-1 text-xl font-bold text-slate-50">
                         Trajetória e Evolução Profissional
                       </h3>
-                      <div className="mt-5 divide-y divide-white/10">
-                        {DEFAULT_TIMELINE.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className="grid gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-12"
-                          >
-                            <div className="sm:col-span-4">
-                              <span
-                                className="font-mono text-xs font-medium tabular-nums"
-                                style={{ color: accent }}
-                              >
-                                0{idx + 1} · {item.phase}
-                              </span>
-                            </div>
-                            <div className="sm:col-span-8">
-                              <h4 className="text-sm font-semibold text-slate-100">
-                                {item.title}
-                              </h4>
-                              <p className="mt-1 text-sm leading-relaxed text-slate-400">
-                                {item.description}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
                     </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-5 md:grid-cols-3">
+                    {DEFAULT_TIMELINE.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className="flex h-full flex-col rounded-xl border border-white/10 bg-[#0B1526] p-5"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#050B14] font-mono text-xs font-semibold tabular-nums"
+                            style={{ color: accent }}
+                          >
+                            0{idx + 1}
+                          </span>
+                          <span
+                            className="font-mono text-xs font-medium tracking-wide"
+                            style={{ color: accent }}
+                          >
+                            {item.phase}
+                          </span>
+                        </div>
+
+                        <h4 className="font-display mt-4 text-base font-semibold leading-snug text-slate-100">
+                          {item.title}
+                        </h4>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                          {item.description}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </Reveal>

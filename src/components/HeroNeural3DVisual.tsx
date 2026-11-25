@@ -7,6 +7,42 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+// Well-distributed indices across the 40-node Fibonacci sphere so labels orbit
+// evenly around the 3D globe without clumping together.
+const TECH_NODE_LABELS: Record<number, string> = {
+  3: 'IA',
+  7: 'Automação',
+  11: 'Sites',
+  15: 'Sistemas',
+  19: 'Cloud',
+  23: 'APIs',
+  27: 'Dados & BI',
+  31: 'Segurança',
+  35: 'Chatbots',
+  38: 'LLMs',
+};
+
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
 export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
   accentColor = '#0EA5E9',
   enabled = true,
@@ -31,8 +67,8 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 
     const [r, g, b] = hexToRgb(accentColor);
-    const logicalSize = 420;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const logicalSize = 460;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = logicalSize * dpr;
     canvas.height = logicalSize * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -41,11 +77,12 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
     const nodes = Array.from({ length: total }, (_, i) => ({
       phi: Math.acos(1 - (2 * (i + 0.5)) / total),
       theta: Math.PI * (1 + Math.sqrt(5)) * i,
-      r: 132,
+      r: 118,
       pulse: (i / total) * Math.PI * 2,
+      label: TECH_NODE_LABELS[i] || null,
     }));
 
-    const maxConnDistSq = 82 * 82;
+    const maxConnDistSq = 78 * 78;
     let angleY = 0;
     let angleX = 0.24;
     let animId = 0;
@@ -55,21 +92,21 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
       if (!inViewport || document.hidden) return;
       ctx.clearRect(0, 0, logicalSize, logicalSize);
       const cx = logicalSize / 2;
-      const cy = logicalSize / 2;
+      const cy = logicalSize / 2 - 8;
 
       if (!prefersReduced) {
-        angleY += 0.004;
+        angleY += 0.0036;
         const targetX = 0.24 + pointerRef.current.y * 0.2;
         angleX += (targetX - angleX) * 0.05;
       }
 
-      const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 165);
+      const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 155);
       grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.22)`);
       grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.08)`);
       grad.addColorStop(1, 'rgba(5, 11, 20, 0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(cx, cy, 165, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 155, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.16)`;
@@ -80,7 +117,7 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
         ctx.rotate(ring === 0 ? angleY * 0.35 : -angleY * 0.3 + 1.15);
         ctx.scale(1, 0.42);
         ctx.beginPath();
-        ctx.arc(0, 0, 156 + ring * 18, 0, Math.PI * 2);
+        ctx.arc(0, 0, 142 + ring * 16, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
@@ -104,6 +141,7 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
           z: z1,
           scale: perspective,
           pulse: n.pulse + angleY * 3.5,
+          label: n.label,
         };
       });
 
@@ -118,8 +156,8 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
           if (distSq < maxConnDistSq) {
             const dist = Math.sqrt(distSq);
             const alpha = Math.min(
-              0.5,
-              ((82 - dist) / 82) * 0.4 * ((a.scale + bNode.scale) / 2),
+              0.46,
+              ((78 - dist) / 78) * 0.38 * ((a.scale + bNode.scale) / 2),
             );
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
@@ -131,18 +169,63 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
       }
 
       projected.sort((a, bNode) => a.z - bNode.z);
+
       for (const p of projected) {
         const glow = 0.55 + Math.sin(p.pulse) * 0.3;
-        const radius = Math.max(1.8, 3.0 * p.scale);
+        const baseRadius = p.label ? 3.5 : 2.6;
+        const radius = Math.max(1.8, baseRadius * p.scale);
+
         ctx.beginPath();
-        ctx.arc(p.x, p.y, radius * 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${(0.16 * glow).toFixed(3)})`;
+        ctx.arc(p.x, p.y, radius * 2.1, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${(0.18 * glow).toFixed(3)})`;
         ctx.fill();
+
+        if (p.label && p.z > -30) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius + 2.4, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.55)`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = p.z > 0 ? accentColor : `rgba(${r}, ${g}, ${b}, 0.55)`;
         ctx.fill();
+
+        // Draw orbiting technology label next to highlighted nodes with 3D depth fade
+        if (p.label) {
+          const depthRatio = Math.max(0, Math.min(1, (p.z + 118) / 236));
+          const labelAlpha = 0.24 + depthRatio * 0.76;
+          const fontSize = Math.round(9.5 + depthRatio * 2);
+          ctx.font = `600 ${fontSize}px "DM Sans", system-ui, sans-serif`;
+          const textWidth = ctx.measureText(p.label).width;
+          const padX = 6;
+          const badgeW = textWidth + padX * 2;
+          const badgeH = fontSize + 7;
+
+          // Keep label cleanly inside canvas bounds (flip to left side when near right edge)
+          const preferLeft = p.x + radius + 8 + badgeW > logicalSize - 8;
+          const bx = preferLeft
+            ? p.x - radius - 7 - badgeW
+            : p.x + radius + 7;
+          const by = p.y - badgeH / 2;
+
+          ctx.save();
+          ctx.globalAlpha = labelAlpha;
+
+          drawRoundedRect(ctx, bx, by, badgeW, badgeH, 5);
+          ctx.fillStyle = 'rgba(5, 11, 20, 0.84)';
+          ctx.fill();
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${(0.28 + depthRatio * 0.42).toFixed(2)})`;
+          ctx.lineWidth = 0.9;
+          ctx.stroke();
+
+          ctx.fillStyle = depthRatio > 0.45 ? '#F8FAFC' : '#94A3B8';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(p.label, bx + padX, p.y + 0.5);
+          ctx.restore();
+        }
       }
 
       if (!prefersReduced) {
@@ -199,16 +282,18 @@ export const HeroNeural3DVisual = React.memo(function HeroNeural3DVisual({
       onMouseLeave={() => {
         pointerRef.current = { x: 0, y: 0 };
       }}
-      className="relative flex h-full min-h-[340px] w-full items-center justify-center rounded-2xl border border-white/10 bg-[#0B1526]/80 p-6 sm:min-h-[420px]"
+      className="relative flex h-full min-h-[360px] w-full items-center justify-center rounded-2xl border border-white/10 bg-[#0B1526]/80 p-4 pb-14 sm:min-h-[440px] sm:p-6 sm:pb-14"
     >
       <canvas
         ref={canvasRef}
-        aria-label="Visualização interativa de rede neural e processamento de dados"
-        className="h-[300px] w-[300px] sm:h-[380px] sm:w-[380px]"
+        aria-label="Visualização interativa de rede neural com tecnologias: IA, Automação, Sites, Sistemas, Cloud, APIs, Dados e BI, Segurança, Chatbots e LLMs"
+        className="h-[320px] w-[320px] sm:h-[400px] sm:w-[400px]"
       />
-      <div className="pointer-events-none absolute bottom-5 left-6 right-6 flex items-center justify-between border-t border-white/10 pt-3 text-xs text-slate-400">
+      <div className="pointer-events-none absolute bottom-4 left-6 right-6 flex items-center justify-between border-t border-white/10 pt-3 text-xs text-slate-400">
         <span>Engenharia de Software &amp; IA</span>
-        <span className="font-mono text-[11px] text-slate-500">Arquitetura Modular</span>
+        <span className="font-mono text-[11px] text-slate-500">
+          Arquitetura Modular
+        </span>
       </div>
     </div>
   );
